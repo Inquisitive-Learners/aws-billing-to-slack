@@ -16,15 +16,10 @@ jobs:
           --role-session-name snowflfake-databases-deploy \
           --query "Credentials.[AccessKeyId,SecretAccessKey,SessionToken]" \
           --output text))
-          export 
           serverless deploy --stage="prod"
 
 
 workflows:
   deploy:
     jobs:
-      - deploy_serverless:
-          filters:
-            branches:
-              only:
-                - master
+      - deploy_serverless
