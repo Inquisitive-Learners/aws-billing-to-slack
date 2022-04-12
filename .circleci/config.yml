@@ -16,7 +16,8 @@ commands:
           --role-session-name snowflfake-databases-deploy \
           --query "Credentials.[AccessKeyId,SecretAccessKey,SessionToken]" \
           --output text))
-          pip install pipenv
+          npm install -g serverless
+          pip3 install pipenv
           serverless plugin install -n serverless-python-requirements
           serverless deploy --stage="prod"
 
