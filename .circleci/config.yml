@@ -1,14 +1,14 @@
 version: 2.1
 
-orbs:
-  aws-cli: circleci/aws-cli@2.0.3
+ci-builder-image: &ci-builder-anchor
+  working_directory: ~/aws-billing-to-slack
+  docker:
+    - image: inquisitive/ci-builder:3.0.0
 
-jobs:
+
+commands:
   deploy_serverless:
-    executor: aws-cli/default
     steps:
-      - checkout
-      - aws-cli/install
       - run: |
           export $(printf "AWS_ACCESS_KEY_ID=%s AWS_SECRET_ACCESS_KEY=%s AWS_SESSION_TOKEN=%s" \
           $(aws sts assume-role \
@@ -18,8 +18,15 @@ jobs:
           --output text))
           serverless deploy --stage="prod"
 
+jobs:
+  deploy-serverless-to-prod:
+    <<: *ci-builder-anchor
+    steps:
+      - checkout
+      - deploy_serverless
+
 
 workflows:
   deploy:
     jobs:
-      - deploy_serverless
+      - deploy-serverless-to-prod
