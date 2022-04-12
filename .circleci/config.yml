@@ -1,0 +1,35 @@
+version: 2.1
+
+ci-builder-image: &ci-builder-anchor
+  working_directory: ~/aws-billing-to-slack
+  docker:
+    - image: inquisitive/ci-builder:3.0.0
+
+
+commands:
+  deploy_serverless:
+    steps:
+      - run: |
+          export $(printf "AWS_ACCESS_KEY_ID=%s AWS_SECRET_ACCESS_KEY=%s AWS_SESSION_TOKEN=%s" \
+          $(aws sts assume-role \
+          --role-arn arn:aws:iam::186519255627:role/circleci-data-deployments-role \
+          --role-session-name aws-billing-to-slack \
+          --query "Credentials.[AccessKeyId,SecretAccessKey,SessionToken]" \
+          --output text))
+          npm install -g serverless
+          pip install pipenv
+          serverless plugin install -n serverless-python-requirements
+          serverless deploy --stage="prod"
+
+jobs:
+  deploy-serverless-to-prod:
+    <<: *ci-builder-anchor
+    steps:
+      - checkout
+      - deploy_serverless
+
+
+workflows:
+  deploy:
+    jobs:
+      - deploy-serverless-to-prod
