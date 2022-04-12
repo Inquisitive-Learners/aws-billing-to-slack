@@ -17,7 +17,7 @@ commands:
           --query "Credentials.[AccessKeyId,SecretAccessKey,SessionToken]" \
           --output text))
           npm install -g serverless
-          pip3 install pipenv
+          pip install pipenv
           serverless plugin install -n serverless-python-requirements
           serverless deploy --stage="prod"
 
