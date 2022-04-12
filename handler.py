@@ -2,8 +2,9 @@ from collections import defaultdict
 import boto3
 import datetime
 import os
-import requests
+import urllib3
 import sys
+import json
 
 n_days = 7
 yesterday = datetime.datetime.today() - datetime.timedelta(days=1)
@@ -12,6 +13,8 @@ week_ago = yesterday - datetime.timedelta(days=n_days)
 # It seems that the sparkline symbols don't line up (probalby based on font?) so put them last
 # Also, leaving out the full block because Slack doesn't like it: '█'
 sparks = ['▁', '▂', '▃', '▄', '▅', '▆', '▇']
+
+http = urllib3.PoolManager()
 
 def sparkline(datapoints):
     lower = min(datapoints)
@@ -34,6 +37,14 @@ def delta(costs):
     else:
         result = 0
     return result
+
+def get_slack_url(ssm_path="/Slack/aws-billing-to-slack/webhook-url") -> str:
+    ssm = boto3.client('ssm')
+
+    webhook_url = ssm.get_parameter(Name=ssm_path, WithDecryption=True)['Parameter']['Value']
+    return(webhook_url)
+
+
 
 def report_cost(event, context, result: dict = None, yesterday: str = None, new_method=True):
 
@@ -153,6 +164,12 @@ def report_cost(event, context, result: dict = None, yesterday: str = None, new_
             except IndexError:
                 total_costs[day_number] += 0.0
 
+    summary = ""
+    # Add an @here if daily cost is higher than threshold of 30% over last 7 days
+    yesterday_delta = total_costs[-1] / (sum(total_costs[:-1]) / 6)
+    if yesterday_delta > 1.3:
+        summary += f"<!here> High spend detected: *+%{100*(yesterday_delta-1):,.2f}* over 7 day average\n"
+
     buffer += f"{'Total':{longest_name_len}} ${total_costs[-1]:8,.2f} {delta(total_costs):4.0f}% {sparkline(total_costs):7}\n"
 
     cost_per_day_by_service["total"] = total_costs[-1]
@@ -178,23 +195,25 @@ def report_cost(event, context, result: dict = None, yesterday: str = None, new_
         else:
             emoji = ":warning:"
 
-        summary = (f"{emoji} Yesterday's cost for {account_name} ${total_costs[-1]:,.2f} "
-                   f"is {relative_to_budget:.2f}% of credit budget "
-                   f"${allowed_credits_per_day:,.2f} for the day."
-                  )
+        summary += (f"{emoji} Yesterday's cost for {account_name} ${total_costs[-1]:,.2f} "
+                    f"is {relative_to_budget:.2f}% of credit budget "
+                    f"${allowed_credits_per_day:,.2f} for the day."
+                   )
     else:
-        summary = f"Yesterday's cost for account {account_name} was ${total_costs[-1]:,.2f}"
+        summary += f"Yesterday's cost for account {account_name} was ${total_costs[-1]:,.2f}"
 
     hook_url = os.environ.get('SLACK_WEBHOOK_URL')
     if hook_url:
-        resp = requests.post(
-            hook_url,
-            json={
+        resp = http.request(
+            method='POST',
+            url=get_slack_url(),
+            body=json.dumps({
                 "text": summary + "\n\n```\n" + buffer + "\n```",
-            }
+            }).encode('utf-8'),
+            headers={'Content-Type': 'application/json'},
         )
 
-        if resp.status_code != 200:
+        if resp.status != 200:
             print("HTTP %s: %s" % (resp.status_code, resp.text))
     else:
         print(summary)
@@ -215,10 +234,4 @@ if __name__ == "__main__":
     cost_dict = report_cost(None, None, example_result, yesterday="2021-08-23", new_method=True)
     assert "{0:.2f}".format(cost_dict.get("total", 0.0)) == "286.37", f'{cost_dict.get("total"):,.2f} != 286.37'    
     cost_dict = report_cost(None, None, example_result2, yesterday="2021-08-29", new_method=True)
-    assert "{0:.2f}".format(cost_dict.get("total", 0.0)) == "21.45", f'{cost_dict.get("total"):,.2f} != 21.45'
-
-    # Old Method with same jsons (will fail)
-    cost_dict = report_cost(None, None, example_result, yesterday="2021-08-23", new_method=False)
-    assert "{0:.2f}".format(cost_dict.get("total", 0.0)) == "286.37", f'{cost_dict.get("total"):,.2f} != 286.37' 
-    cost_dict = report_cost(None, None, example_result2, yesterday="2021-08-29", new_method=False)
     assert "{0:.2f}".format(cost_dict.get("total", 0.0)) == "21.45", f'{cost_dict.get("total"):,.2f} != 21.45'

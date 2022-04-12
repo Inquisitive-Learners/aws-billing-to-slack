@@ -4,9 +4,6 @@ plugins:
   - serverless-python-requirements
 provider:
   name: aws
-  # Sane defaults, easy for multi-account/multi-region organizations
-  profile: ${param:aws_profile, env:AWS_PROFILE, 'default'}
-  region: ${env:AWS_REGION, env:AWS_DEFAULT_REGION, 'us-east-1'}
   runtime: python3.9
 
   iam:
@@ -21,6 +18,14 @@ provider:
           Action:
             - "iam:ListAccountAliases"
           Resource: "*"
+        - Effect: "Allow"
+          Action:
+            - "ssm:GetParameter"
+          Resource: "arn:aws:ssm:ap-southeast-2:186519255627:parameter/Slack/aws-billing-to-slack/webhook-url"
+        - Effect: "Allow"
+          Action:
+            - "kms:Decrypt"
+          Resource: "arn:aws:kms:ap-southeast-2:186519255627:key/ced31a12-a70d-4453-9d7b-8a6bf327ac26"
 
 functions:
   report_cost:
@@ -33,11 +38,10 @@ functions:
     timeout: 10
 
     events:
-      # Every day at 15:00 UTC / 10am CDT
-      - schedule: cron(0 15 * * ? *)
+      # Every day at 22:00 UTC / 8am AEST / 9am AEDT
+      - schedule: cron(0 22 * * ? *)
 
     environment:
-      SLACK_WEBHOOK_URL: ${param:slack_url}
       AWS_ACCOUNT_NAME: ${param:aws_account, ''}
       CREDITS_EXPIRE_DATE: ${param:credits_expire_date, ''}
       CREDITS_REMAINING_AS_OF: ${param:credits_remaining_date, ''}
